@@ -7,7 +7,7 @@ import json
 app = Flask(__name__)
 CORS(app)
 
-# Inicializace databáze
+# Inicializace databáze 👌
 def init_db():
     conn = sqlite3.connect('db.sqlite3')
     c = conn.cursor()
