@@ -1,7 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import psycopg2
-from psycopg2.extras import RealDictCursor
 import uuid
 import json
 import os
@@ -9,30 +8,44 @@ import os
 app = Flask(__name__)
 CORS(app)
 
-# Připojovací řetězec z environment proměnné (pro lokální testování můžeš nahradit svým stringem)
-DATABASE_URL = os.environ.get('DATABASE_URL', 'postgresql://postgres:[TVOJE-HESLO]@db.kvjwbiucxsdfipdcetfv.supabase.co:5432/postgres')
+# Použij URL pro 'Transaction' mód z dashboardu (port 6543)
+# Přidej nakonec ?sslmode=require pokud tam není
+DATABASE_URL = os.environ.get('DATABASE_URL')
 
 def get_db_connection():
+    # Přidáme sslmode=require pro jistotu
     return psycopg2.connect(DATABASE_URL)
 
-def init_db():
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS arrays (
-            token TEXT PRIMARY KEY,
-            data TEXT
-        )
-    ''')
-    conn.commit()
-    c.close()
-    conn.close()
+_db_initialized = False
 
-# Inicializace tabulky (pokud neexistuje)
-init_db()
+def init_db_if_needed():
+    global _db_initialized
+    if _db_initialized:
+        return
+    
+    conn = None
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS arrays (
+                token TEXT PRIMARY KEY,
+                data TEXT
+            )
+        ''')
+        conn.commit()
+        c.close()
+        _db_initialized = True
+        print("Database initialized successfully.")
+    except Exception as e:
+        print(f"Database init failed: {e}")
+    finally:
+        if conn:
+            conn.close()
 
 @app.route('/api/schedule', methods=['POST'])
 def save_array():
+    init_db_if_needed()
     try:
         incoming_data = request.get_json()
         stringified = json.dumps(incoming_data)
@@ -51,6 +64,7 @@ def save_array():
 
 @app.route('/get/<token>', methods=['GET'])
 def get_array(token):
+    init_db_if_needed()
     try:
         conn = get_db_connection()
         c = conn.cursor()
@@ -66,5 +80,6 @@ def get_array(token):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# Pro Vercel nepotřebujeme init_db() na top levelu
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=5000, debug=True)
